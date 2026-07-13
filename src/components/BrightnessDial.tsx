@@ -7,7 +7,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type CSSProperties,
 } from "react";
-
+import "./BrightnessDial.css";
 
 // O dial cobre um arco de 300° (como um mostrador de luz), deixando um
 // "vão" de 60° na parte de baixo - assim fica claro visualmente onde
@@ -143,6 +143,8 @@ export default function BrightnessDial({ value, onChange, disabled, step = 2 }: 
           cy={CENTER}
           r={RADIUS}
           className="dial__track"
+          fill="none"
+          strokeLinecap="round"
           strokeDasharray={`${fullLength} 999`}
           transform={`rotate(${rotation} ${CENTER} ${CENTER})`}
         />
@@ -151,6 +153,8 @@ export default function BrightnessDial({ value, onChange, disabled, step = 2 }: 
           cy={CENTER}
           r={RADIUS}
           className="dial__fill"
+          fill="none"
+          strokeLinecap="round"
           strokeDasharray={`${filled} 999`}
           transform={`rotate(${rotation} ${CENTER} ${CENTER})`}
         />
