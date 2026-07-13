@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./BrightnessOsd.css";
@@ -19,9 +20,16 @@ export default function BrightnessOsd() {
   useEffect(() => {
     const win = getCurrentWindow();
 
-    const unlisten = listen<[number, number]>("brightness-changed", (event) => {
+    const unlisten = listen<[number, number]>("brightness-changed", async (event) => {
       const [, newValue] = event.payload;
       setValue(newValue);
+
+      // Essa janela roda isolada da principal, então não tem como ler o
+      // "Mostrar popup" do localStorage direto - pergunta pro Rust, que é
+      // quem a janela principal mantém atualizado (ver App.tsx).
+      const shouldShow = await invoke<boolean>("get_show_osd").catch(() => true);
+      if (!shouldShow) return;
+
       win.show();
 
       if (hideTimeout.current) clearTimeout(hideTimeout.current);

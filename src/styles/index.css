@@ -87,3 +87,39 @@ button {
 ::selection {
   background: var(--accent-glow);
 }
+
+/* --- Scrollbars -------------------------------------------------------
+   Sem isso, qualquer área com overflow (ex.: a tela de configurações)
+   mostra a barra de rolagem padrão do sistema - cinza, larga, sem nada a
+   ver com o resto da interface. Aqui ela vira uma trilha fina e discreta,
+   com o "polegar" na cor de destaque do app, nos dois motores de
+   renderização (WebView2/Chromium via ::-webkit-scrollbar, Firefox via
+   scrollbar-width/scrollbar-color). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--border-subtle);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-faint);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}

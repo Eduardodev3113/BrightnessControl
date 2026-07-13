@@ -40,9 +40,15 @@ fn default_shortcut_config() -> ShortcutConfig {
 }
 
 /// Converte uma string tipo "ctrl+alt+ArrowUp" (o mesmo formato que o
-/// front-end grava em settings.ts) em (Modifiers, Code). Cobre as teclas
-/// que fazem sentido pra um atalho de brilho: setas, letras, números,
-/// F1-F12 e algumas teclas especiais comuns.
+/// front-end grava em settings.ts) em (Modifiers, Code).
+///
+/// A parte da tecla é delegada ao `FromStr` que a crate `keyboard-types`
+/// (dependência do tauri-plugin-global-shortcut) já implementa pra `Code`:
+/// os nomes de variante da enum (`ArrowUp`, `KeyA`, `Digit0`, `F1`, ...)
+/// são exatamente os mesmos valores da spec "UI Events code" que o
+/// front-end grava, então não precisamos reescrever esse match na mão -
+/// e ganhamos de graça o suporte a teclas que nem estavam listadas aqui
+/// (ex.: pontuação, numpad).
 fn parse_shortcut(raw: &str) -> Result<(Modifiers, Code), String> {
     let mut parts: Vec<&str> = raw.split('+').collect();
     let key_part = parts.pop().ok_or_else(|| "atalho vazio".to_string())?;
@@ -58,72 +64,9 @@ fn parse_shortcut(raw: &str) -> Result<(Modifiers, Code), String> {
         }
     }
 
-    let code = match key_part {
-        "ArrowUp" => Code::ArrowUp,
-        "ArrowDown" => Code::ArrowDown,
-        "ArrowLeft" => Code::ArrowLeft,
-        "ArrowRight" => Code::ArrowRight,
-        "Space" => Code::Space,
-        "Enter" => Code::Enter,
-        "Escape" => Code::Escape,
-        "Tab" => Code::Tab,
-        "Backspace" => Code::Backspace,
-        "Delete" => Code::Delete,
-        "Insert" => Code::Insert,
-        "Home" => Code::Home,
-        "End" => Code::End,
-        "PageUp" => Code::PageUp,
-        "PageDown" => Code::PageDown,
-        "KeyA" => Code::KeyA,
-        "KeyB" => Code::KeyB,
-        "KeyC" => Code::KeyC,
-        "KeyD" => Code::KeyD,
-        "KeyE" => Code::KeyE,
-        "KeyF" => Code::KeyF,
-        "KeyG" => Code::KeyG,
-        "KeyH" => Code::KeyH,
-        "KeyI" => Code::KeyI,
-        "KeyJ" => Code::KeyJ,
-        "KeyK" => Code::KeyK,
-        "KeyL" => Code::KeyL,
-        "KeyM" => Code::KeyM,
-        "KeyN" => Code::KeyN,
-        "KeyO" => Code::KeyO,
-        "KeyP" => Code::KeyP,
-        "KeyQ" => Code::KeyQ,
-        "KeyR" => Code::KeyR,
-        "KeyS" => Code::KeyS,
-        "KeyT" => Code::KeyT,
-        "KeyU" => Code::KeyU,
-        "KeyV" => Code::KeyV,
-        "KeyW" => Code::KeyW,
-        "KeyX" => Code::KeyX,
-        "KeyY" => Code::KeyY,
-        "KeyZ" => Code::KeyZ,
-        "Digit0" => Code::Digit0,
-        "Digit1" => Code::Digit1,
-        "Digit2" => Code::Digit2,
-        "Digit3" => Code::Digit3,
-        "Digit4" => Code::Digit4,
-        "Digit5" => Code::Digit5,
-        "Digit6" => Code::Digit6,
-        "Digit7" => Code::Digit7,
-        "Digit8" => Code::Digit8,
-        "Digit9" => Code::Digit9,
-        "F1" => Code::F1,
-        "F2" => Code::F2,
-        "F3" => Code::F3,
-        "F4" => Code::F4,
-        "F5" => Code::F5,
-        "F6" => Code::F6,
-        "F7" => Code::F7,
-        "F8" => Code::F8,
-        "F9" => Code::F9,
-        "F10" => Code::F10,
-        "F11" => Code::F11,
-        "F12" => Code::F12,
-        other => return Err(format!("tecla não suportada: {other}")),
-    };
+    let code = key_part
+        .parse::<Code>()
+        .map_err(|_| format!("tecla não suportada: {key_part}"))?;
 
     Ok((modifiers, code))
 }
@@ -196,11 +139,62 @@ fn set_brightness_step(step: i32, state: State<BrightnessStep>) -> Result<(), St
         return Err("passo fora do intervalo permitido".to_string());
     }
     *state.0.lock().unwrap() = step;
-    // TEMPORÁRIO - log de diagnóstico. Aparece no terminal onde você
-    // rodou `npm run tauri dev`. Remove depois que confirmarmos que o
-    // passo está chegando certo.
-    eprintln!("[diagnóstico] passo configurado atualizado para {step}");
     Ok(())
+}
+
+/// Se o popup de brilho (janela "osd") deve aparecer quando o brilho muda
+/// via atalho/scroll. Fica no lado Rust porque a janela do popup roda
+/// isolada da principal - é ela quem consulta esse estado antes de se
+/// mostrar (ver `get_show_osd`), em vez de confiar em algo salvo só no
+/// localStorage da janela principal, que o popup nunca enxergaria.
+struct ShowOsd(Mutex<bool>);
+
+/// Chamado pelo front-end (janela principal) ao abrir o app e toda vez
+/// que o usuário mexe no interruptor "Mostrar popup" na tela de
+/// configurações.
+#[tauri::command]
+fn set_show_osd(show: bool, state: State<ShowOsd>) {
+    *state.0.lock().unwrap() = show;
+}
+
+/// Chamado pela própria janela do popup, bem antes de se mostrar, pra
+/// saber se deve aparecer ou ficar quieta.
+#[tauri::command]
+fn get_show_osd(state: State<ShowOsd>) -> bool {
+    *state.0.lock().unwrap()
+}
+
+/// Chamado pelo front-end ao abrir a tela de configurações, pra saber o
+/// estado atual do registro no SO (fonte da verdade real - não confiamos
+/// em nada salvo no localStorage pra isso, já que o usuário pode ter
+/// desabilitado por fora, ex. no Gerenciador de Tarefas do Windows).
+#[tauri::command]
+fn get_autostart_enabled(app: AppHandle) -> Result<bool, String> {
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+/// Chamado toda vez que o usuário mexe no interruptor "Iniciar com o
+/// Windows" na tela de configurações.
+#[tauri::command]
+fn set_autostart_enabled(enabled: bool, app: AppHandle) -> Result<(), String> {
+    let auto = app.autolaunch();
+    if enabled {
+        auto.enable().map_err(|e| e.to_string())
+    } else {
+        auto.disable().map_err(|e| e.to_string())
+    }
+}
+
+/// Escreve o conteúdo do backup (JSON) no caminho escolhido pelo usuário
+/// no diálogo nativo de "Salvar como" (ver handleExportSettings em
+/// App.tsx, que chama o plugin de diálogo e depois este comando). Fazer
+/// isso pelo Rust em vez de um download via Blob/`<a>` do navegador é
+/// necessário porque a janela do Tauri não tem a UI de downloads de um
+/// navegador de verdade - o clique num link com `download` simplesmente
+/// não faz nada visível aqui.
+#[tauri::command]
+fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    std::fs::write(&path, contents).map_err(|e| e.to_string())
 }
 
 fn main() {
@@ -209,10 +203,12 @@ fn main() {
         .manage(default_shortcut_config())
         .manage(default_scroll_config())
         .manage(BrightnessStep(Mutex::new(5)))
+        .manage(ShowOsd(Mutex::new(true)))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcuts(["ctrl+alt+ArrowUp", "ctrl+alt+ArrowDown"])
@@ -243,9 +239,6 @@ fn main() {
                         return;
                     };
 
-                    // TEMPORÁRIO - log de diagnóstico.
-                    eprintln!("[diagnóstico] atalho de teclado - passo lido: {step}, delta aplicado: {delta}");
-
                     let state = app.state::<SelectedMonitor>();
                     let index = *state.0.lock().unwrap();
 
@@ -266,13 +259,19 @@ fn main() {
             set_selected_monitor,
             set_global_shortcuts,
             set_scroll_modifiers,
-            set_brightness_step
+            set_brightness_step,
+            set_show_osd,
+            get_show_osd,
+            get_autostart_enabled,
+            set_autostart_enabled,
+            write_text_file
         ])
         .setup(|app| {
-            // Registra o app pra iniciar junto com o Windows. Chamar de
-            // novo em toda inicialização é seguro (idempotente) - se já
-            // estiver registrado, não faz nada de diferente.
-            let _ = app.autolaunch().enable();
+            // Não força mais o autostart ligado na inicialização - isso
+            // agora é uma escolha do usuário na tela de configurações
+            // (ver set_autostart_enabled). O plugin já lê o estado real
+            // do registro do SO, então não precisamos "restaurar" nada
+            // aqui.
 
             // Posiciona a janela OSD (o "popup de volume", mas de brilho)
             // embaixo, centralizada na tela - igual o popup de volume do
@@ -389,8 +388,6 @@ fn main() {
                                         value
                                     };
                                     let delta: i32 = if *delta_y > 0 { step } else { -step };
-                                    // TEMPORÁRIO - log de diagnóstico.
-                                    eprintln!("[diagnóstico] scroll - passo lido: {step}, delta enviado: {delta}");
                                     let _ = brightness_tx.send(delta);
                                     // Engole o evento: a rolagem não chega
                                     // no app por trás, porque virou "ajustar

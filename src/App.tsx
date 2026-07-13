@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import TitleBar from "./components/TitleBar";
@@ -7,13 +8,36 @@ import BrightnessDial from "./components/BrightnessDial";
 import PresetChips, { DEFAULT_PRESETS, type Preset } from "./components/PresetChips";
 import MonitorSelect, { MonitorInfo } from "./components/MonitorSelect";
 import Settings from "./components/Settings";
-import { loadSettings, saveSettings, type AppSettings } from "./settings";
+import {
+  loadSettings,
+  saveSettings,
+  buildBackup,
+  parseBackup,
+  type AppSettings,
+} from "./settings";
 import "./App.css";
 
 // Espera esse tempo sem o usuário mexer no dial antes de mandar o valor
 // pro monitor de verdade. Isso evita inundar o barramento DDC/CI (que é
 // lento, ~50-200ms por escrita) com uma escrita a cada pixel arrastado.
 const WRITE_DEBOUNCE_MS = 60;
+
+// De quanto em quanto tempo relê o brilho direto do monitor, pra pegar
+// mudanças feitas por fora do app (botões físicos do monitor, outro
+// software). DDC/CI é lento, então esse intervalo é bem mais folgado que
+// qualquer coisa relacionada a interação do usuário.
+const POLL_INTERVAL_MS = 4000;
+
+// Depois de qualquer escrita nossa (dial, preset, atalho, scroll), ignora
+// leituras do polling por esse tempo - senão uma leitura que chegue no
+// meio de uma sequência de ajustes rápidos pode aplicar um valor já
+// desatualizado por cima do que o usuário acabou de fazer.
+const POLL_SUPPRESS_AFTER_WRITE_MS = 1500;
+
+// Quantos passos de "desfazer" guardamos por monitor. Uma pilha por
+// monitor (em vez de uma global) porque desfazer um ajuste feito no
+// monitor A não deveria mexer no valor do monitor B.
+const HISTORY_MAX = 20;
 
 // Todos os perfis (os 4 padrão + os que o usuário criar) ficam salvos
 // juntos aqui, sobrevivendo a fechar e reabrir o app. Guardar tudo numa
@@ -55,6 +79,32 @@ export default function App() {
   // poder cancelar se o usuário selecionar outro preset no meio do
   // caminho.
   const animationFrame = useRef<number | null>(null);
+  // Timestamp da última vez que o próprio app escreveu no monitor -
+  // consultado pelo polling (ver useEffect mais abaixo) pra saber se deve
+  // ignorar a leitura porque acabamos de mexer no brilho nós mesmos.
+  const lastLocalWriteRef = useRef(0);
+  const markLocalWrite = () => {
+    lastLocalWriteRef.current = Date.now();
+  };
+
+  // Pilha de valores anteriores, por monitor, pra permitir "desfazer" o
+  // último ajuste de brilho. Fica num ref (não em state) porque é
+  // consultada/alterada dentro de callbacks que não precisam re-renderizar
+  // sozinhos - o `historyVersion` abaixo é só o gatilho pra atualizar o
+  // botão "Desfazer" na tela.
+  const historyRef = useRef<Record<number, number[]>>({});
+  const [historyVersion, setHistoryVersion] = useState(0);
+  // Guarda o valor de brilho de antes de uma sequência de ajustes (um
+  // arraste no dial, uma rajada de setas) começar, pra que o "desfazer"
+  // volte pra antes do gesto inteiro, não pra um meio-passo dele.
+  const gestureStart = useRef<{ monitor: number; value: number } | null>(null);
+
+  const pushHistory = (monitorIndex: number, previousValue: number) => {
+    const arr = historyRef.current[monitorIndex] ?? [];
+    if (arr[arr.length - 1] === previousValue) return;
+    historyRef.current[monitorIndex] = [...arr, previousValue].slice(-HISTORY_MAX);
+    setHistoryVersion((v) => v + 1);
+  };
 
   // Detecta os monitores e o brilho do primeiro deles. Extraído numa
   // função à parte pra poder ser chamado tanto na abertura do app quanto
@@ -127,6 +177,16 @@ export default function App() {
     );
   }, [settings.dialStep]);
 
+  // O popup ("osd") roda numa janela separada, que não tem acesso ao
+  // localStorage/estado da janela principal - por isso ele mesmo pergunta
+  // pro Rust (via get_show_osd) se deve aparecer, e é esse effect aqui
+  // que mantém o Rust com o valor atualizado.
+  useEffect(() => {
+    invoke("set_show_osd", { show: settings.showOsd }).catch((err) =>
+      setError(String(err))
+    );
+  }, [settings.showOsd]);
+
   // Carrega a lista de monitores e o brilho atual ao abrir o app.
   useEffect(() => {
     detectMonitors();
@@ -149,19 +209,68 @@ export default function App() {
   useEffect(() => {
     const unlisten = listen<[number, number]>("brightness-changed", (event) => {
       const [index, value] = event.payload;
-      if (index === selectedMonitor) setBrightness(value);
+      if (index === selectedMonitor) {
+        markLocalWrite();
+        if (value !== brightnessRef.current) {
+          pushHistory(index, brightnessRef.current);
+        }
+        setBrightness(value);
+      }
     });
     return () => {
       unlisten.then((fn) => fn());
     };
   }, [selectedMonitor]);
 
+  // Relê o brilho real do monitor de tempos em tempos, pra pegar mudanças
+  // feitas por fora do app (botões físicos do monitor, outro software de
+  // controle). Só roda com a janela visível (não tem por quê gastar
+  // ciclos de DDC/CI com o app minimizado/escondido na bandeja) e ignora
+  // leituras que caiam logo depois de uma escrita nossa (ver
+  // markLocalWrite), pra não sobrepor um ajuste que o próprio usuário
+  // acabou de fazer com um valor que já ficou velho.
+  useEffect(() => {
+    if (monitors.length === 0) return;
+
+    const poll = async () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastLocalWriteRef.current < POLL_SUPPRESS_AFTER_WRITE_MS) return;
+      if (animationFrame.current !== null) return;
+      try {
+        const current = await invoke<number>("get_brightness", {
+          index: selectedMonitor,
+        });
+        setBrightness((prev) => (prev === current ? prev : current));
+      } catch {
+        // Falha isolada de leitura não é motivo pra mostrar erro na tela -
+        // o próximo ciclo tenta de novo.
+      }
+    };
+
+    const interval = setInterval(poll, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [selectedMonitor, monitors.length]);
+
   const commitBrightness = (value: number) => {
-    if (writeTimeout.current) clearTimeout(writeTimeout.current);
+    if (writeTimeout.current) {
+      clearTimeout(writeTimeout.current);
+    } else {
+      // Não há uma escrita pendente ainda, então isso é o início de uma
+      // nova sequência de ajuste (primeiro movimento de um arraste, ou
+      // uma tecla de seta isolada) - guarda o valor de antes dela pra
+      // permitir desfazer o gesto inteiro depois, não só o último pixel.
+      gestureStart.current = { monitor: selectedMonitor, value: brightnessRef.current };
+    }
     writeTimeout.current = setTimeout(() => {
+      writeTimeout.current = null;
+      markLocalWrite();
       invoke("set_brightness", { index: selectedMonitor, value }).catch((err) =>
         setError(String(err))
       );
+      if (gestureStart.current && gestureStart.current.monitor === selectedMonitor) {
+        pushHistory(selectedMonitor, gestureStart.current.value);
+      }
+      gestureStart.current = null;
     }, WRITE_DEBOUNCE_MS);
   };
 
@@ -198,6 +307,7 @@ export default function App() {
     }
 
     const start = brightnessRef.current;
+    if (start !== target) pushHistory(selectedMonitor, start);
     const startTime = performance.now();
     let lastWrite = 0;
 
@@ -209,6 +319,7 @@ export default function App() {
 
       if (t >= 1) {
         animationFrame.current = null;
+        markLocalWrite();
         invoke("set_brightness", { index: selectedMonitor, value: target }).catch(
           (err) => setError(String(err))
         );
@@ -217,6 +328,7 @@ export default function App() {
 
       if (now - lastWrite >= ANIMATION_WRITE_INTERVAL_MS) {
         lastWrite = now;
+        markLocalWrite();
         invoke("set_brightness", { index: selectedMonitor, value }).catch(() => {});
       }
 
@@ -239,6 +351,83 @@ export default function App() {
     setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, label } : p)));
   };
 
+  // Gera o JSON do backup (settings + perfis) e salva num arquivo.
+  //
+  // Antes isso usava um Blob + link `<a download>`, um truque que só
+  // funciona num navegador de verdade (que tem uma UI de downloads pra
+  // pegar o clique e perguntar onde salvar). A janela do Tauri não tem
+  // essa UI, então o clique não fazia nada visível - por isso o botão
+  // "parecia" quebrado. Agora é tudo nativo: o plugin de diálogo abre o
+  // "Salvar como" do próprio Windows, e quem escreve o arquivo de
+  // verdade é um comando Rust (write_text_file, em src-tauri/src/main.rs).
+  const handleExportSettings = async () => {
+    const backup = buildBackup(settings, profiles);
+    const date = new Date().toISOString().slice(0, 10);
+    try {
+      const path = await save({
+        defaultPath: `brilho-config-${date}.json`,
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!path) return; // usuário cancelou o diálogo
+      await invoke("write_text_file", {
+        path,
+        contents: JSON.stringify(backup, null, 2),
+      });
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
+  // Recebe o texto bruto de um arquivo .json escolhido pelo usuário (ver
+  // Settings.tsx, que lê o arquivo com FileReader e chama isto). Devolve
+  // uma mensagem de erro (string) em caso de falha, ou null se aplicou
+  // com sucesso - assim a tela de configurações pode mostrar um aviso
+  // sem precisar de mais um estado de erro duplicado aqui em App.
+  const handleImportSettings = (raw: string): string | null => {
+    const backup = parseBackup(raw);
+    if (!backup) return "Arquivo inválido ou corrompido.";
+    setSettings(backup.settings);
+    setProfiles(backup.presets.length > 0 ? backup.presets : DEFAULT_PRESETS);
+    return null;
+  };
+
+  // Desfaz o último ajuste de brilho do monitor selecionado, voltando pro
+  // valor guardado no topo da pilha de histórico dele. Cancela qualquer
+  // animação/escrita pendente antes, senão ela poderia sobrescrever o
+  // valor restaurado um instante depois.
+  // O `historyVersion` na lista de dependências é o que força recalcular
+  // isto quando a pilha muda - o histórico em si vive num ref (não em
+  // state) porque é lido/alterado dentro de callbacks que não devem
+  // disparar re-render sozinhos.
+  const canUndo = useMemo(
+    () => (historyRef.current[selectedMonitor] ?? []).length > 0,
+    [selectedMonitor, historyVersion]
+  );
+
+  const handleUndo = () => {
+    const stack = historyRef.current[selectedMonitor] ?? [];
+    if (stack.length === 0) return;
+    const previous = stack[stack.length - 1];
+    historyRef.current[selectedMonitor] = stack.slice(0, -1);
+    setHistoryVersion((v) => v + 1);
+
+    if (animationFrame.current !== null) {
+      cancelAnimationFrame(animationFrame.current);
+      animationFrame.current = null;
+    }
+    if (writeTimeout.current) {
+      clearTimeout(writeTimeout.current);
+      writeTimeout.current = null;
+    }
+    gestureStart.current = null;
+
+    markLocalWrite();
+    setBrightness(previous);
+    invoke("set_brightness", { index: selectedMonitor, value: previous }).catch((err) =>
+      setError(String(err))
+    );
+  };
+
   const handleClose = () => {
     // "Fechar" só esconde a janela - o app continua rodando na bandeja.
     getCurrentWindow().hide();
@@ -258,7 +447,12 @@ export default function App() {
 
       <main className={`app__content ${showingSettings ? "app__content--settings" : ""}`}>
         {showingSettings ? (
-          <Settings settings={settings} onChange={setSettings} />
+          <Settings
+            settings={settings}
+            onChange={setSettings}
+            onExport={handleExportSettings}
+            onImport={handleImportSettings}
+          />
         ) : (
           <>
             {loading && <p className="app__status">Procurando monitores…</p>}
@@ -288,6 +482,34 @@ export default function App() {
                   onChange={handleChange}
                   step={settings.dialStep}
                 />
+
+                {canUndo && (
+                  <button
+                    type="button"
+                    className="app__undo-btn"
+                    onClick={handleUndo}
+                    title="Desfazer o último ajuste de brilho"
+                    aria-label="Desfazer o último ajuste de brilho"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                      <path
+                        d="M4 3v3.5H7.5"
+                        stroke="currentColor"
+                        strokeWidth="1.3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path
+                        d="M4.2 6.3A5.3 5.3 0 1 1 3.4 9.8"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.3"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    Desfazer
+                  </button>
+                )}
 
                 <PresetChips
                   presets={profiles}

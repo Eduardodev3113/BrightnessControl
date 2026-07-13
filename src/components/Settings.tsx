@@ -1,4 +1,11 @@
-import { useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   type AppSettings,
   type ScrollModifier,
@@ -11,6 +18,10 @@ import "./Settings.css";
 interface Props {
   settings: AppSettings;
   onChange: (settings: AppSettings) => void;
+  onExport: () => void;
+  // Recebe o texto bruto do arquivo escolhido; devolve uma mensagem de
+  // erro pra mostrar, ou null se importou com sucesso.
+  onImport: (raw: string) => string | null;
 }
 
 const SCROLL_MODIFIER_OPTIONS: { key: ScrollModifier; label: string }[] = [
@@ -23,8 +34,54 @@ const SCROLL_MODIFIER_OPTIONS: { key: ScrollModifier; label: string }[] = [
 // gravar o de "diminuir" cancela a gravação do de "aumentar", etc.
 type RecordingField = "shortcutUp" | "shortcutDown" | null;
 
-export default function Settings({ settings, onChange }: Props) {
+export default function Settings({ settings, onChange, onExport, onImport }: Props) {
   const [recording, setRecording] = useState<RecordingField>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportClick = () => {
+    setImportError(null);
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Limpa o valor do input já aqui, não só no fim - assim escolher o
+    // MESMO arquivo duas vezes seguidas (ex.: tentar de novo depois de um
+    // erro) dispara onChange de novo, o que não aconteceria se o browser
+    // visse o value "igual ao de antes".
+    e.target.value = "";
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const raw = typeof reader.result === "string" ? reader.result : "";
+      const error = onImport(raw);
+      setImportError(error);
+    };
+    reader.onerror = () => setImportError("Não foi possível ler o arquivo.");
+    reader.readAsText(file);
+  };
+
+  // O autostart não vive no localStorage (settings.ts) porque a fonte da
+  // verdade real é o registro do SO - por isso é lido do Rust ao abrir
+  // essa tela, em vez de vir junto com o resto de `settings`.
+  const [autostart, setAutostart] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    invoke<boolean>("get_autostart_enabled")
+      .then(setAutostart)
+      .catch(() => setAutostart(null));
+  }, []);
+
+  const toggleAutostart = () => {
+    if (autostart === null) return;
+    const next = !autostart;
+    setAutostart(next); // otimista - a UI responde na hora
+    invoke("set_autostart_enabled", { enabled: next }).catch(() => {
+      setAutostart(!next); // desfaz se o Rust recusar
+    });
+  };
 
   const patch = (partial: Partial<AppSettings>) => {
     onChange({ ...settings, ...partial });
@@ -155,6 +212,56 @@ export default function Settings({ settings, onChange }: Props) {
             <span className="settings__toggle-knob" />
           </button>
         </div>
+      </div>
+
+      <div className="settings__section">
+        <h2 className="settings__heading">Inicialização</h2>
+        <div className="settings__row">
+          <span className="settings__label">Iniciar com o Windows</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={autostart ?? false}
+            disabled={autostart === null}
+            className={`settings__toggle ${autostart ? "settings__toggle--on" : ""}`}
+            onClick={toggleAutostart}
+          >
+            <span className="settings__toggle-knob" />
+          </button>
+        </div>
+      </div>
+
+      <div className="settings__section">
+        <h2 className="settings__heading">Backup</h2>
+        <div className="settings__row">
+          <span className="settings__label">
+            Configurações e perfis num arquivo .json
+          </span>
+          <div className="settings__backup-actions">
+            <button type="button" className="settings__backup-btn" onClick={onExport}>
+              Exportar
+            </button>
+            <button
+              type="button"
+              className="settings__backup-btn"
+              onClick={handleImportClick}
+            >
+              Importar
+            </button>
+          </div>
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/json,.json"
+          className="settings__file-input"
+          onChange={handleFileSelected}
+        />
+        {importError && <p className="settings__hint settings__hint--error">{importError}</p>}
+        <p className="settings__hint">
+          Importar substitui os atalhos, o tema e os perfis atuais pelos do
+          arquivo.
+        </p>
       </div>
 
       <button
