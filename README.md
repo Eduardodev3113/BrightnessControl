@@ -12,6 +12,7 @@ nenhum runtime extra na máquina final.
 ```
 ├── src/                          # Frontend (React + TypeScript)
 │   ├── main.tsx                   # Ponto de entrada do React
+│   ├── vite-env.d.ts              # Tipos do Vite (permite importar .css/.svg sem erro de TS)
 │   ├── App.tsx                    # Componente raiz / estado da aplicação
 │   ├── App.css
 │   ├── settings.ts                 # Tipos/persistência de settings + gravação de atalho
@@ -30,8 +31,9 @@ nenhum runtime extra na máquina final.
 │   │   └── brightness.rs           # Comandos de brilho via DDC/CI (ddc-hi)
 │   ├── capabilities/default.json   # Permissões da janela (Tauri v2)
 │   ├── icons/                      # Ícones do app/instalador
+│   ├── windows/hooks.nsh           # Hooks customizados do instalador NSIS
 │   ├── Cargo.toml
-│   └── tauri.conf.json             # Configuração da janela/bundle
+│   └── tauri.conf.json             # Configuração da janela/bundle/instalador
 │
 ├── prototipo-python-antigo/      # Protótipo antigo em Python (não usado mais no app final)
 ├── package.json
@@ -43,7 +45,7 @@ nenhum runtime extra na máquina final.
 
 ## Requisitos pra rodar/compilar
 
-1. **Node.js** 
+1. **Node.js**
 2. **Rust** — instale em https://rustup.rs (é o `rustup-init.exe` pro Windows).
 3. **Tauri CLI**
 4. **WebView2** — já vem pré-instalado no Windows 10/11
@@ -59,6 +61,17 @@ npm run tauri dev
 
 Isso abre a janela do app com hot-reload: qualquer mudança no React
 atualiza a interface na hora, sem precisar recompilar o Rust.
+
+> **Nota sobre erros de TypeScript em imports de CSS:** o arquivo
+> `src/vite-env.d.ts` (com `/// <reference types="vite/client" />`)
+> é obrigatório pro TypeScript aceitar `import "./Arquivo.css"` dentro
+> dos componentes. Sem ele, o editor mostra o erro TS2307
+> ("Cannot find module ... .css") em todos os imports de CSS — o app
+> até compila, mas o editor fica cheio de sublinhado vermelho.
+> Além disso, cada componente **precisa** importar o próprio CSS
+> (ex.: `BrightnessDial.tsx` importa `./BrightnessDial.css`), senão o
+> Vite não inclui o estilo no bundle e o componente aparece "quebrado"
+> (foi o caso do dial que sumia e só sobrava o texto do percentual).
 
 ---
 
@@ -78,6 +91,15 @@ Esse é o arquivo que você roda pra instalar o app (cria atalho no menu
 iniciar, etc.) — quem for usar só baixa e instala, sem precisar de
 Python, Node ou Rust na máquina dele.
 
+O instalador está configurado no `tauri.conf.json` (`bundle.windows.nsis`) com:
+
+- **`installMode: "perMachine"`** — pede elevação de administrador (UAC)
+  antes de copiar os arquivos, o que permite instalar em qualquer pasta
+  (ex.: `D:\Controle de Brilho`) sem erro de permissão de escrita.
+- **`languages: ["PortugueseBR"]`** + **`displayLanguageSelector: false`** —
+  instalador direto em português do Brasil, sem perguntar idioma.
+- **`installerHooks: "./windows/hooks.nsh"`** — hooks customizados do NSIS.
+
 Se preferir só o executável solto (sem instalador), ele fica em:
 
 ```
@@ -87,6 +109,25 @@ src-tauri/target/release/controle-de-brilho.exe
 mas nesse caso é melhor não mover essa pasta depois de ativar o
 autostart (ver abaixo), já que o Windows vai guardar o caminho exato
 desse `.exe`.
+
+### Solução de problemas na instalação
+
+**"Error opening file for writing: ...controle-de-brilho.exe"**
+
+Esse erro aparece quando o instalador não consegue sobrescrever o
+`.exe` de uma instalação anterior. Causas e soluções, na ordem:
+
+1. **O app ainda está rodando.** Fechar a janela **não** encerra o
+   processo — ele continua na bandeja do sistema. Feche pelo menu da
+   bandeja ("Sair") ou finalize `controle-de-brilho.exe` no Gerenciador
+   de Tarefas (`Ctrl+Shift+Esc`), e clique em **Repetir** no instalador.
+2. **Sem permissão na pasta de destino.** Com o `installMode:
+   "perMachine"` o instalador já pede admin automaticamente; se estiver
+   usando um instalador antigo, clique com o botão direito no setup e
+   escolha "Executar como administrador".
+3. **Antivírus segurando o arquivo.** Alguns antivírus travam o `.exe`
+   por alguns segundos após o fechamento — aguarde e clique em
+   **Repetir**.
 
 ### Iniciar automaticamente com o Windows
 
@@ -104,9 +145,9 @@ Isso registra o app pra abrir sozinho no login, direto pelo Windows
 
 ## Sobre os ícones
 
-O projeto referencia ícones em `src-tauri/icons/` que ainda não existem
-neste scaffold. Antes do primeiro `npm run tauri build`, gere eles a
-partir de uma imagem quadrada (PNG, 1024x1024 de preferência):
+O projeto referencia ícones em `src-tauri/icons/`. Se eles ainda não
+existirem, gere-os antes do primeiro `npm run tauri build` a partir de
+uma imagem quadrada (PNG, 1024x1024 de preferência):
 
 ```bash
 npm run tauri icon caminho/para/sua-imagem.png
@@ -121,17 +162,13 @@ Isso cria automaticamente todos os tamanhos (`32x32.png`, `128x128.png`,
 
 O arquivo `src-tauri/src/brightness.rs` usa a crate `ddc-hi` pra falar
 com o monitor via DDC/CI. É uma crate pequena e ainda na versão `0.x`,
-então a API pode ter pequenas diferenças entre versões. Eu não consegui
-compilar/testar esse código aqui (ambiente sem Windows/monitor físico),
-então é possível que, no seu primeiro `cargo build`, apareça algum erro
-de nome de método. Se isso acontecer:
+então a API pode ter pequenas diferenças entre versões. Se aparecer
+algum erro de nome de método no `cargo build`:
 
 1. Rode `cargo doc --open -p ddc-hi` ou veja https://docs.rs/ddc-hi
 2. Ajuste os nomes em `brightness.rs` (a lógica geral - enumerar
    monitores, ler/escrever o VCP feature `0x10` de luminância - continua
    sendo a mesma, só o nome exato do método pode mudar).
-
-Me manda o erro exato do `cargo build` que eu te ajudo a corrigir.
 
 ---
 
@@ -164,3 +201,5 @@ no menu OSD dele (às vezes vem desligada por padrão), conectado via
   Configurações (usa `tauri-plugin-autostart`)
 - Exportar/importar backup das configurações e presets (arquivo salvo
   via diálogo nativo, `tauri-plugin-dialog`)
+- Instalador NSIS em português (PT-BR), com elevação de administrador
+  (`perMachine`) e hooks customizados (`windows/hooks.nsh`)
