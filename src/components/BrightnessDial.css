@@ -1,0 +1,70 @@
+.dial {
+  --glow-strength: 0;
+  position: relative;
+  width: 200px;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+}
+
+.dial--dragging {
+  cursor: grabbing;
+}
+
+.dial--disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dial__svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(0deg);
+}
+
+.dial__track,
+.dial__fill {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.dial__track {
+  stroke: var(--bg-elevated-hover);
+  stroke-width: 10;
+}
+
+.dial__fill {
+  stroke: var(--accent);
+  stroke-width: 10;
+  transition: stroke-dasharray 0.12s ease-out;
+  filter: drop-shadow(0 0 calc(4px + 10px * var(--glow-strength)) var(--accent-glow));
+}
+
+.dial--dragging .dial__fill {
+  transition: none;
+}
+
+.dial__readout {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  pointer-events: none;
+}
+
+.dial__value {
+  font-size: 42px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.dial__unit {
+  font-size: 16px;
+  color: var(--text-muted);
+}

@@ -1,0 +1,30 @@
+.monitor-select {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.monitor-select__item {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-body);
+  font-size: 11px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.monitor-select__item:hover {
+  color: var(--text-muted);
+}
+
+.monitor-select__item--active {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}

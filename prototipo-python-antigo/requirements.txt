@@ -1,0 +1,4 @@
+customtkinter
+monitorcontrol
+pystray
+Pillow

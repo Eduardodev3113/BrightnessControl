@@ -1,0 +1,61 @@
+:root {
+  /* ---- Cor ---- */
+  --bg-base: #12151c;
+  --bg-elevated: #1a1f2b;
+  --bg-elevated-hover: #212739;
+  --border-subtle: #262c3d;
+
+  --accent: #f0a868;
+  --accent-dim: #8a5a2b;
+  --accent-glow: rgba(240, 168, 104, 0.35);
+
+  --text-primary: #eae6df;
+  --text-muted: #7c8299;
+  --text-faint: #4b5165;
+
+  /* ---- Tipografia ---- */
+  --font-display: "Sora", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Consolas", monospace;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--text-primary);
+}
+
+#root {
+  height: 100vh;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* Foco visível para acessibilidade via teclado */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--accent-glow);
+}
