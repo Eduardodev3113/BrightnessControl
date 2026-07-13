@@ -7,7 +7,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type CSSProperties,
 } from "react";
-import "./BrightnessDial.css";
+
 
 // O dial cobre um arco de 300° (como um mostrador de luz), deixando um
 // "vão" de 60° na parte de baixo - assim fica claro visualmente onde

@@ -10,25 +10,30 @@ nenhum runtime extra na máquina final.
 ## Estrutura do projeto
 
 ```
-├── src/                        # Frontend (React + TypeScript)
-│   ├── main.tsx                 # Ponto de entrada do React
-│   ├── App.tsx                  # Componente raiz / estado da aplicação
+├── src/                          # Frontend (React + TypeScript)
+│   ├── main.tsx                   # Ponto de entrada do React
+│   ├── App.tsx                    # Componente raiz / estado da aplicação
 │   ├── App.css
+│   ├── settings.ts                 # Tipos/persistência de settings + gravação de atalho
 │   ├── components/
-│   │   ├── TitleBar.tsx          # Barra de título customizada (arrastar/fechar)
-│   │   ├── BrightnessDial.tsx    # Dial circular de brilho (drag + teclado)
-│   │   ├── PresetChips.tsx       # Botões de preset (Dia/Noite/Cinema/Jogo)
-│   │   └── MonitorSelect.tsx     # Seletor de monitor (se houver mais de um)
-│   └── styles/index.css          # Tokens de cor/tipografia
+│   │   ├── TitleBar.tsx            # Barra de título customizada (arrastar/fechar)
+│   │   ├── BrightnessDial.tsx      # Dial circular de brilho (drag + teclado)
+│   │   ├── BrightnessOsd.tsx       # Popup "estilo volume do Windows" ao mudar o brilho
+│   │   ├── PresetChips.tsx         # Presets (Dia/Noite/Cinema/Jogo + presets custom)
+│   │   ├── MonitorSelect.tsx       # Seletor de monitor (se houver mais de um)
+│   │   └── Settings.tsx            # Tela de configurações (atalhos, autostart, backup...)
+│   └── styles/index.css            # Tokens de cor/tipografia
 │
-├── src-tauri/                  # Backend (Rust)
+├── src-tauri/                    # Backend (Rust)
 │   ├── src/
-│   │   ├── main.rs               # Janela, bandeja do sistema, eventos
-│   │   └── brightness.rs         # Comandos de brilho via DDC/CI (ddc-hi)
-│   ├── capabilities/default.json # Permissões da janela (Tauri v2)
+│   │   ├── main.rs                 # Janela, bandeja do sistema, atalhos globais, comandos
+│   │   └── brightness.rs           # Comandos de brilho via DDC/CI (ddc-hi)
+│   ├── capabilities/default.json   # Permissões da janela (Tauri v2)
+│   ├── icons/                      # Ícones do app/instalador
 │   ├── Cargo.toml
-│   └── tauri.conf.json           # Configuração da janela/bundle
+│   └── tauri.conf.json             # Configuração da janela/bundle
 │
+├── prototipo-python-antigo/      # Protótipo antigo em Python (não usado mais no app final)
 ├── package.json
 ├── vite.config.ts
 └── index.html
@@ -65,9 +70,37 @@ atualiza a interface na hora, sem precisar recompilar o Rust.
 npm run tauri build
 ```
 
-O instalador (`.exe`/`.msi`) sai em `src-tauri/target/release/bundle/`.
-Esse é o arquivo que você distribui — quem for usar só baixa e instala,
-sem precisar de Python, Node ou Rust na máquina dele.
+O instalador NSIS sai em:
+
+```
+src-tauri/target/release/bundle/nsis/Controle de Brilho_0.1.0_x64-setup.exe
+```
+
+Esse é o arquivo que você roda pra instalar o app (cria atalho no menu
+iniciar, etc.) — quem for usar só baixa e instala, sem precisar de
+Python, Node ou Rust na máquina dele.
+
+Se preferir só o executável solto (sem instalador), ele fica em:
+
+```
+src-tauri/target/release/controle-de-brilho.exe
+```
+
+mas nesse caso é melhor não mover essa pasta depois de ativar o
+autostart (ver abaixo), já que o Windows vai guardar o caminho exato
+desse `.exe`.
+
+### Iniciar automaticamente com o Windows
+
+O app já vem com o plugin de autostart integrado — não precisa mexer
+em nada manualmente:
+
+1. Instale/abra o app normalmente.
+2. Abra a tela de **Configurações** (ícone de engrenagem).
+3. Ative o toggle **iniciar com o Windows**.
+
+Isso registra o app pra abrir sozinho no login, direto pelo Windows
+(sem precisar de atalho na pasta de Inicialização).
 
 ---
 
@@ -112,22 +145,24 @@ no menu OSD dele (às vezes vem desligada por padrão), conectado via
 
 ---
 
-## Funcionalidades já incluídas neste scaffold
+## Funcionalidades já incluídas
 
 - Dial circular arrastável (mouse) e navegável (setas do teclado)
 - Debounce de escrita no DDC/CI (não trava arrastando o dial)
-- Presets: Dia, Noite, Cinema, Jogo
+- Presets: Dia, Noite, Cinema, Jogo — além de presets customizados
+  (criar, renomear, remover), persistidos localmente
 - Suporte a múltiplos monitores
-- Janela sem moldura nativa, com titlebar customizada
+- Atalho de teclado global (fora da janela, ex. `Ctrl+Alt+↑`/`↓`) pra
+  ajustar o brilho mesmo com o app minimizado, configurável na tela de
+  Configurações
+- Mudar o brilho com a roda do mouse + modificadores configuráveis
+  (Ctrl/Alt/Shift)
+- Popup de OSD ao mudar o brilho (estilo o popup de volume do Windows),
+  pode ser desativado
+- Janela sem moldura nativa, com titlebar customizada, tema claro/escuro
 - Fechar a janela esconde pro segundo plano (não encerra o processo)
 - Ícone na bandeja do sistema com menu "Abrir" / "Sair"
-- Plugin de autostart já incluído (falta só ativar a chamada pra ligar
-  automaticamente com o Windows, se você quiser essa função)
-
-## Ideias pra evoluir depois
-
-- Botão/toggle pra ativar o autostart (a dependência já está instalada)
-- Atalhos de teclado globais (fora da janela) pra ajustar o brilho
-- Ajuste automático por horário do dia
-- Transição animada ao aplicar um preset (em vez de pulo instantâneo)
-- Persistir os presets customizados (hoje são fixos no código)
+- Autostart real com o Windows, ativável por um toggle na tela de
+  Configurações (usa `tauri-plugin-autostart`)
+- Exportar/importar backup das configurações e presets (arquivo salvo
+  via diálogo nativo, `tauri-plugin-dialog`)
