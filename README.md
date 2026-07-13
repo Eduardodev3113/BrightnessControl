@@ -43,12 +43,10 @@ nenhum runtime extra na máquina final.
 
 ## Requisitos pra rodar/compilar
 
-1. **Node.js** (18+) — você já deve ter, pelo StudyHub.
+1. **Node.js** 
 2. **Rust** — instale em https://rustup.rs (é o `rustup-init.exe` pro Windows).
-3. **Tauri CLI** — já vem incluso no `package.json` como dependência de
-   desenvolvimento, não precisa instalar nada além do passo 4.
-4. **WebView2** — já vem pré-instalado no Windows 10/11, não precisa
-   instalar nada.
+3. **Tauri CLI**
+4. **WebView2** — já vem pré-instalado no Windows 10/11
 
 ---
 
