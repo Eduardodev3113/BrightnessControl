@@ -1,0 +1,173 @@
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 4px 2px 12px;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.settings__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings__heading {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.settings__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings__label {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.settings__hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-faint);
+  line-height: 1.4;
+}
+
+/* --- Botão de gravar atalho ------------------------------------------ */
+
+.settings__shortcut-btn {
+  min-width: 128px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: center;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.settings__shortcut-btn:hover {
+  background: var(--bg-elevated-hover);
+}
+
+.settings__shortcut-btn--recording {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-elevated-hover);
+}
+
+/* --- Passo do dial ------------------------------------------------- */
+
+.settings__step-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings__slider {
+  width: 96px;
+  accent-color: var(--accent);
+}
+
+.settings__step-value {
+  min-width: 32px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* --- Toggle (liga/desliga OSD) -------------------------------------- */
+
+.settings__toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  padding: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.settings__toggle--on {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+.settings__toggle-knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  transition: transform 0.15s ease;
+}
+
+.settings__toggle--on .settings__toggle-knob {
+  transform: translateX(16px);
+  background: var(--accent);
+}
+
+/* --- Modificadores do scroll ----------------------------------------- */
+
+.settings__modifier-group {
+  display: flex;
+  gap: 6px;
+}
+
+.settings__modifier-chip {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.settings__modifier-chip:hover {
+  background: var(--bg-elevated-hover);
+  color: var(--text-primary);
+}
+
+.settings__modifier-chip--active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* --- Restaurar padrão ------------------------------------------------ */
+
+.settings__reset {
+  align-self: center;
+  margin-top: 4px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 11px;
+  transition: color 0.15s ease;
+}
+
+.settings__reset:hover {
+  color: var(--text-muted);
+}

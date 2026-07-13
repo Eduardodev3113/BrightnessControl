@@ -3,8 +3,19 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px 0 16px;
+  padding: 0 8px;
   flex-shrink: 0;
+}
+
+.titlebar__left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 8px;
+}
+
+.titlebar__left:has(.titlebar__btn--back) {
+  padding-left: 0;
 }
 
 .titlebar__label {

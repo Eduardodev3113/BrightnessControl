@@ -21,6 +21,26 @@
   color-scheme: dark;
 }
 
+/* Modo claro - ativado via document.documentElement.dataset.theme no
+   App.tsx, de acordo com o que estiver salvo em settings.theme. Troca só
+   as cores; tipografia e espaçamento continuam os mesmos. */
+[data-theme="light"] {
+  --bg-base: #f4f1ec;
+  --bg-elevated: #ffffff;
+  --bg-elevated-hover: #ece6da;
+  --border-subtle: #e1dacb;
+
+  --accent: #d9822b;
+  --accent-dim: #f2d3ab;
+  --accent-glow: rgba(217, 130, 43, 0.25);
+
+  --text-primary: #2b2a26;
+  --text-muted: #6f6a5e;
+  --text-faint: #a29c8c;
+
+  color-scheme: light;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -54,6 +74,14 @@ button {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* O dial é redondo, então usamos um anel circular (box-shadow) em vez do
+   contorno quadrado padrão do navegador. */
+.dial:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-glow), 0 0 0 1px var(--accent);
+  border-radius: 50%;
 }
 
 ::selection {

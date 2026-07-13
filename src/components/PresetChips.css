@@ -27,3 +27,64 @@
   border-color: var(--accent);
   color: var(--accent);
 }
+
+.preset-chip--add {
+  color: var(--text-faint);
+  font-weight: 700;
+  border-style: dashed;
+}
+
+.preset-chip--add:hover {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+.preset-chip-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.preset-chip-wrap .preset-chip {
+  padding-right: 24px;
+}
+
+.preset-chip__remove {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+.preset-chip-wrap:hover .preset-chip__remove {
+  opacity: 1;
+}
+
+.preset-chip__remove:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated-hover);
+}
+
+.preset-add-input {
+  width: 96px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+  outline: none;
+}

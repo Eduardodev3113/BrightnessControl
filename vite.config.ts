@@ -9,6 +9,12 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+    watch: {
+      // Ignora a pasta onde o Rust compila, senão o Vite tenta "vigiar"
+      // arquivos .exe temporários enquanto o Cargo ainda está escrevendo
+      // neles, e o Windows trava com erro EBUSY.
+      ignored: ["**/src-tauri/**"],
+    },
   },
   envPrefix: ["VITE_", "TAURI_"],
   build: {

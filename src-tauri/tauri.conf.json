@@ -22,6 +22,20 @@
         "center": true,
         "shadow": true,
         "visible": true
+      },
+      {
+        "label": "osd",
+        "title": "Brilho",
+        "width": 260,
+        "height": 64,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "focus": false,
+        "visible": false
       }
     ],
     "security": {

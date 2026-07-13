@@ -24,6 +24,7 @@ interface Props {
   value: number; // 0-100
   onChange: (value: number) => void;
   disabled?: boolean;
+  step?: number; // quanto cada seta move o valor (Shift multiplica por 5)
 }
 
 function angleToValue(angle: number): number {
@@ -47,9 +48,28 @@ function describeArc(fraction: number) {
   return { fullLength, filled };
 }
 
-export default function BrightnessDial({ value, onChange, disabled }: Props) {
+export default function BrightnessDial({ value, onChange, disabled, step = 2 }: Props) {
   const dialRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  const commitEdit = () => {
+    const raw = inputRef.current?.value ?? "";
+    const parsed = Math.round(Number(raw));
+    if (!Number.isNaN(parsed) && raw.trim() !== "") {
+      onChange(Math.max(0, Math.min(100, parsed)));
+    }
+    setEditing(false);
+  };
+
+  const handleEditKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.currentTarget.blur(); // dispara commitEdit via onBlur
+    } else if (e.key === "Escape") {
+      setEditing(false);
+    }
+  };
 
   const updateFromPointer = useCallback(
     (clientX: number, clientY: number) => {
@@ -78,18 +98,24 @@ export default function BrightnessDial({ value, onChange, disabled }: Props) {
 
   const handlePointerDown = (e: ReactPointerEvent) => {
     if (disabled) return;
+    // Defesa extra: mesmo que o stopPropagation do .dial__readout não
+    // impeça o evento de chegar aqui (ex.: alguma peculiaridade do
+    // WebView2), nunca inicia o arraste se o clique começou em cima do
+    // número/input - senão o "editing" nunca chega a abrir.
+    const target = e.target as HTMLElement;
+    if (target.closest(".dial__readout")) return;
     setDragging(true);
     updateFromPointer(e.clientX, e.clientY);
   };
 
   const handleKeyDown = (e: ReactKeyboardEvent) => {
     if (disabled) return;
-    const step = e.shiftKey ? 10 : 2;
+    const effectiveStep = e.shiftKey ? step * 5 : step;
     if (e.key === "ArrowUp" || e.key === "ArrowRight") {
-      onChange(Math.min(100, value + step));
+      onChange(Math.min(100, value + effectiveStep));
       e.preventDefault();
     } else if (e.key === "ArrowDown" || e.key === "ArrowLeft") {
-      onChange(Math.max(0, value - step));
+      onChange(Math.max(0, value - effectiveStep));
       e.preventDefault();
     }
   };
@@ -130,8 +156,32 @@ export default function BrightnessDial({ value, onChange, disabled }: Props) {
         />
       </svg>
 
-      <div className="dial__readout">
-        <span className="dial__value">{value}</span>
+      <div className="dial__readout" onPointerDown={(e) => e.stopPropagation()}>
+        {editing ? (
+          <input
+            ref={inputRef}
+            type="number"
+            className="dial__input"
+            min={0}
+            max={100}
+            autoFocus
+            defaultValue={value}
+            onFocus={(e) => e.currentTarget.select()}
+            onBlur={commitEdit}
+            onKeyDown={handleEditKeyDown}
+          />
+        ) : (
+          <span
+            className="dial__value"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!disabled) setEditing(true);
+            }}
+            title="Clique para digitar um valor exato"
+          >
+            {value}
+          </span>
+        )}
         <span className="dial__unit">%</span>
       </div>
     </div>
