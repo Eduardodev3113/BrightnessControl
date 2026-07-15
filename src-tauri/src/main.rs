@@ -286,6 +286,17 @@ fn main() {
                         let _ = osd.set_position(tauri::PhysicalPosition::new(x, y));
                     }
                 }
+
+                // Força a janela do popup a carregar de verdade logo na
+                // inicialização (em vez de ficar "adormecida" até a primeira
+                // vez que alguém mandar `show()`). Sem isso, se o brilho for
+                // ajustado nos primeiros segundos depois que o Windows abre
+                // o app sozinho (autostart), o listener de "brightness-changed"
+                // dessa janela ainda pode não ter terminado de carregar - o
+                // evento é disparado, mas não tem ninguém escutando do outro
+                // lado ainda, e o popup simplesmente não aparece dessa vez.
+                let _ = osd.show();
+                let _ = osd.hide();
             }
 
             // Escuta Ctrl+Alt(+Shift, conforme configurado) + roda do mouse
